@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const mineflayer = require('mineflayer');
 const { pathfinder } = require('mineflayer-pathfinder');
+const collectBlock = require('mineflayer-collectblock').plugin;
 
 const { Logger } = require('./core/logger');
 const { Blackboard } = require('./core/blackboard');
@@ -87,6 +88,7 @@ function createBot(options = {}) {
   });
 
   bot.loadPlugin(pathfinder);
+  bot.loadPlugin(collectBlock);
 
   const logger = new Logger('MinecraftBotV6', process.env.LOG_LEVEL || 'info');
   const blackboard = new Blackboard();
