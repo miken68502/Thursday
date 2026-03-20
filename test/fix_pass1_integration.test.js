@@ -111,6 +111,37 @@ test('guard job persists and resumes guard mode after threat handling', async ()
   assert.equal(guarding.details.reason, 'area_safe');
 });
 
+test('guard job passes hostile catalog to getThreatNearPosition in expected argument order', async () => {
+  const job = new GuardPlayerJob({ scanIntervalMs: 0, guardRadius: 6 });
+  const blackboard = new Blackboard();
+  blackboard.patch('designatedPlayer', 'Owner');
+  let callArgs = null;
+  const context = {
+    blackboard,
+    data: { hostileCatalog: ['zombie', 'skeleton'] },
+    bot: {
+      health: 20,
+      attack: () => {},
+      entity: { position: vec(0, 0, 0) },
+      players: { Owner: { entity: { position: vec(0, 0, 0) } } }
+    },
+    services: {
+      inventory: { equipBestWeapon: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
+      navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
+      combat: {
+        getThreatNearPosition: (...args) => {
+          callArgs = args;
+          return null;
+        }
+      }
+    }
+  };
+
+  const out = await job.step(context, { cancelled: false });
+  assert.equal(out.ok, true);
+  assert.deepEqual(callArgs[0], ['zombie', 'skeleton']);
+});
+
 test('watchdog does not cancel healthy persistent jobs with heartbeat', async () => {
   const blackboard = new Blackboard();
   const scheduler = {
@@ -201,10 +232,10 @@ test('PrepareForJobJob can pull required tool from known chest before crafting',
       home: { getAnchor: () => vec(0, 0, 0), getNearestKnownStation: () => null, getKnownChests: () => [vec(3, 0, 3)] },
       navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
       inventory: {
-        getSummary: () => ({ usedSlots: 2, freeSlots: 34, fullness: 0.1, summary: hasPickaxe ? { stone_pickaxe: 1, bread: 2 } : { bread: 2 } }),
+        getSummary: () => ({ usedSlots: 2, freeSlots: 34, fullness: 0.1, summary: hasPickaxe ? { iron_pickaxe: 1, bread: 2 } : { bread: 2 } }),
         openContainer: async () => ({ ok: true, code: 'SUCCESS', retryable: false, details: { container: { close() {} } } }),
         withdrawItems: async (_container, request) => {
-          if (request.name === 'stone_pickaxe') hasPickaxe = true;
+          if (/_pickaxe$/.test(request.name)) hasPickaxe = true;
           return { ok: true, code: 'SUCCESS', retryable: false, details: request };
         }
       },
@@ -231,11 +262,11 @@ test('PrepareForJobJob uses profile-specific tool candidates', async () => {
       home: { getAnchor: () => vec(0, 0, 0), getNearestKnownStation: () => null, getKnownChests: () => [vec(3, 0, 3)] },
       navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
       inventory: {
-        getSummary: () => ({ usedSlots: 2, freeSlots: 34, fullness: 0.1, summary: hasAxe ? { stone_axe: 1, bread: 2 } : { bread: 2 } }),
+        getSummary: () => ({ usedSlots: 2, freeSlots: 34, fullness: 0.1, summary: hasAxe ? { iron_axe: 1, bread: 2 } : { bread: 2 } }),
         openContainer: async () => ({ ok: true, code: 'SUCCESS', retryable: false, details: { container: { close() {} } } }),
         withdrawItems: async (_container, request) => {
-          if (request.name === 'stone_axe') hasAxe = true;
-          return { ok: request.name === 'stone_axe', code: request.name === 'stone_axe' ? 'SUCCESS' : 'FAILED', retryable: false, details: request };
+          if (/_axe$/.test(request.name)) hasAxe = true;
+          return { ok: /_axe$/.test(request.name), code: /_axe$/.test(request.name) ? 'SUCCESS' : 'FAILED', retryable: false, details: request };
         }
       },
       crafting: { craft: async () => ({ ok: false, code: 'MISSING_MATERIALS', retryable: false }) }

@@ -69,3 +69,52 @@ test('prepare job fails fast when return home fails', async () => {
   assert.equal(result.ok, false);
   assert.equal(result.code, 'FAILED');
 });
+
+test('prepare job craft stage falls back through tool candidates until one crafts', async () => {
+  const craftedAttempts = [];
+  let hasIronPickaxe = false;
+  const context = {
+    bot: {
+      entity: { position: { x: 0, y: 64, z: 0 } },
+      blockAt: () => null
+    },
+    blackboard: {
+      get: () => null,
+      recordProgress() {}
+    },
+    services: {
+      home: {
+        getAnchor: () => ({ x: 0, y: 64, z: 0 }),
+        scanStationsNear: () => {},
+        getNearestKnownStation: () => null,
+        getKnownChests: () => []
+      },
+      navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
+      inventory: {
+        getSummary: () => ({
+          fullness: 0.1,
+          summary: hasIronPickaxe ? { bread: 4, iron_pickaxe: 1 } : { bread: 4 }
+        }),
+        hasEdibleFood: () => true,
+        openContainer: async () => ({ ok: false }),
+        withdrawItems: async () => ({ ok: false })
+      },
+      crafting: {
+        craft: async (req) => {
+          craftedAttempts.push(req.item);
+          if (req.item === 'iron_pickaxe') {
+            hasIronPickaxe = true;
+            return { ok: true, code: 'SUCCESS', retryable: false, details: {} };
+          }
+          return { ok: false, code: 'MISSING_MATERIALS', retryable: false, details: {} };
+        }
+      }
+    }
+  };
+
+  const job = new PrepareForJobJob({ profile: 'mine' });
+  const result = await job.step(context, { cancelled: false });
+  assert.equal(result.ok, true);
+  assert.equal(craftedAttempts[0], 'diamond_pickaxe');
+  assert.equal(craftedAttempts.includes('iron_pickaxe'), true);
+});

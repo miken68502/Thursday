@@ -104,6 +104,18 @@ class PrepareForJobJob extends BaseJob {
     return false;
   }
 
+  async tryCraftAnyRequiredTool(context, token, profile) {
+    const candidates = this.requiredTools(profile);
+    let lastFailure = null;
+    for (const toolName of candidates) {
+      const crafted = await new CraftItemJob({ item: toolName, amount: 1 }).step(context, token);
+      if (crafted.ok) return crafted;
+      lastFailure = crafted;
+      if (['INTERRUPTED', 'FAILED'].includes(crafted.code) && !crafted.retryable) return crafted;
+    }
+    return lastFailure || this.stepResult(false, 'MISSING_TOOL', false, { profile, required: candidates });
+  }
+
   async step(context, token) {
     if (token.cancelled) return this.stepResult(false, 'INTERRUPTED', false, { reason: token.reason });
 
@@ -151,8 +163,7 @@ class PrepareForJobJob extends BaseJob {
     if (!hasTool && this.requiredTools(profile).length) {
       this.currentStepId = 'craft_tool';
       context.blackboard.recordProgress({ jobType: this.type, stepId: this.currentStepId, profile });
-      const craftTarget = this.requiredTools(profile)[0] || 'stone_pickaxe';
-      const crafted = await new CraftItemJob({ item: craftTarget, amount: 1 }).step(context, token);
+      const crafted = await this.tryCraftAnyRequiredTool(context, token, profile);
       if (!crafted.ok) return crafted;
       inv = this.inventorySummary(context);
       hasTool = this.hasRequiredTool(inv, profile);

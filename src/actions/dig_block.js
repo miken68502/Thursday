@@ -12,8 +12,12 @@ async function digBlockAction(context, block, options = {}) {
         radius: home.getProtectionRadius?.() ?? 25
       });
     }
+    if (typeof context.bot.canDigBlock === 'function' && !context.bot.canDigBlock(block)) {
+      return result(false, 'UNBREAKABLE', false, { block: block.name, reason: 'canDigBlock_false' });
+    }
+    const estimatedDigTimeMs = typeof context.bot.digTime === 'function' ? context.bot.digTime(block) : null;
     await context.bot.dig(block);
-    return result(true, 'SUCCESS', false, { block: block.name });
+    return result(true, 'SUCCESS', false, { block: block.name, estimatedDigTimeMs });
   } catch (error) {
     return result(false, 'FAILED', true, { error: error.message });
   }

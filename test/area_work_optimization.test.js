@@ -50,3 +50,59 @@ test('clear area job uses batch anchor movement and nearest dequeue', async () =
   assert.equal(['SUCCESS', 'DONE'].includes(r.code), true);
   assert.equal(job.batchBudget <= 1, true);
 });
+
+test('clear area job prefers world collectBlock when available', async () => {
+  const bot = {
+    entity: { position: pos(0, 0, 0) },
+    dig: async () => {
+      throw new Error('should_not_dig');
+    }
+  };
+  let collectCalls = 0;
+  const context = {
+    bot,
+    services: {
+      world: {
+        buildAreaWorkQueue: () => [{ action: 'break', block: { name: 'stone', position: pos(1, 0, 0) } }],
+        computeBatchAnchor: () => null,
+        nearestWorkItem: (queue) => queue.shift(),
+        collectBlock: async () => {
+          collectCalls += 1;
+          return { ok: true, code: 'SUCCESS', retryable: false };
+        }
+      },
+      inventory: { inventoryPressure: () => ({ lowFreeSlots: false }) }
+    }
+  };
+
+  const job = new ClearAreaJob({ batchSize: 1, radius: 2 });
+  const out = await job.step(context, { cancelled: false });
+  assert.equal(out.ok, true);
+  assert.equal(collectCalls, 1);
+});
+
+test('clear area job respects home protection before collectBlock', async () => {
+  let collectCalls = 0;
+  const context = {
+    bot: { entity: { position: pos(0, 0, 0) } },
+    services: {
+      world: {
+        buildAreaWorkQueue: () => [{ action: 'break', block: { name: 'stone', position: pos(1, 0, 0) } }],
+        computeBatchAnchor: () => null,
+        nearestWorkItem: (queue) => queue.shift(),
+        collectBlock: async () => {
+          collectCalls += 1;
+          return { ok: true, code: 'SUCCESS', retryable: false };
+        }
+      },
+      home: { isProtectedPosition: () => true, getProtectionRadius: () => 25 },
+      inventory: { inventoryPressure: () => ({ lowFreeSlots: false }) }
+    }
+  };
+
+  const job = new ClearAreaJob({ batchSize: 1, radius: 2 });
+  const out = await job.step(context, { cancelled: false });
+  assert.equal(out.ok, false);
+  assert.equal(out.code, 'HOME_PROTECTED');
+  assert.equal(collectCalls, 0);
+});
