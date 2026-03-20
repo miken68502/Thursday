@@ -88,26 +88,89 @@ class WorldService {
   }
 
   getDropsAround(radius = 10) {
+    if (!this.bot?.entities || !this.bot?.entity?.position?.distanceTo) return [];
     return Object.values(this.bot.entities)
       .filter((entity) => entity?.name === 'item' && this.bot.entity.position.distanceTo(entity.position) <= radius);
   }
 
-  async collectDrops(filterFn = null) {
-    const drops = this.getDropsAround(10);
-    if (!drops.length) return result(true, 'SUCCESS', false, { collected: 0 });
+  normalizeDropName(drop) {
+    return drop?.displayName?.toLowerCase()?.replace(/\s+/g, '_') || drop?.name || '';
+  }
 
+  nearestDrop(radius = 10, filterFn = null) {
+    if (typeof this.bot.nearestEntity === 'function') {
+      return this.bot.nearestEntity((entity) => {
+        if (entity?.name !== 'item') return false;
+        if (this.bot.entity.position.distanceTo(entity.position) > radius) return false;
+        if (!filterFn) return true;
+        return filterFn({ name: this.normalizeDropName(entity) });
+      });
+    }
+
+    const drops = this.getDropsAround(radius)
+      .filter((drop) => !filterFn || filterFn({ name: this.normalizeDropName(drop) }))
+      .sort((a, b) => this.bot.entity.position.distanceTo(a.position) - this.bot.entity.position.distanceTo(b.position));
+    return drops[0] || null;
+  }
+
+  async collectDrops(filterFn = null) {
+    if (!this.bot?.pathfinder?.goto) return result(false, 'UNAVAILABLE', true, { reason: 'pathfinder_missing' });
     let collected = 0;
-    for (const drop of drops) {
-      if (filterFn && !filterFn({ name: drop.displayName?.toLowerCase().replace(/\s+/g, '_') })) continue;
+    let attempts = 0;
+    const maxAttempts = 12;
+    while (attempts < maxAttempts) {
+      const drop = this.nearestDrop(10, filterFn);
+      if (!drop) break;
       try {
         await this.bot.pathfinder.goto(new GoalNear(drop.position.x, drop.position.y, drop.position.z, 1));
         collected += 1;
       } catch (error) {
         this.logger.debug('Drop collection path failed', { error: error.message });
       }
+      attempts += 1;
     }
 
     return result(true, 'SUCCESS', false, { collected });
+  }
+
+  async collectBlock(block, options = {}) {
+    if (!block) return result(false, 'NO_TARGET', false);
+    const plugin = this.bot.collectBlock;
+    if (!plugin || typeof plugin.collect !== 'function') return result(false, 'UNAVAILABLE', true, { reason: 'collectblock_plugin_missing' });
+    try {
+      await plugin.collect(block, options);
+      return result(true, 'SUCCESS', false, { block: block.name, via: 'collectblock' });
+    } catch (error) {
+      this.logger.debug('Collect block failed', { block: block?.name, error: error.message });
+      return result(false, 'FAILED', true, { error: error.message, block: block?.name, via: 'collectblock' });
+    }
+  }
+
+  async collectBlockBatch(blocks, options = {}) {
+    const safeBlocks = (blocks || []).filter(Boolean);
+    if (!safeBlocks.length) return result(false, 'NO_TARGET', false, { collected: 0 });
+    const plugin = this.bot.collectBlock;
+    if (!plugin || typeof plugin.collect !== 'function') return result(false, 'UNAVAILABLE', true, { reason: 'collectblock_plugin_missing' });
+    try {
+      await plugin.collect(safeBlocks, options);
+      return result(true, 'SUCCESS', false, { collected: safeBlocks.length, via: 'collectblock_batch' });
+    } catch (error) {
+      this.logger.debug('Collect block batch failed', { count: safeBlocks.length, error: error.message });
+      return result(false, 'FAILED', true, { error: error.message, collected: 0, via: 'collectblock_batch' });
+    }
+  }
+
+  findFromVein(block, maxBlocks = 8) {
+    if (!block) return [];
+    const plugin = this.bot.collectBlock;
+    if (plugin && typeof plugin.findFromVein === 'function') {
+      try {
+        return plugin.findFromVein(block, maxBlocks) || [block];
+      } catch (error) {
+        this.logger.debug('findFromVein failed', { block: block?.name, error: error.message });
+      }
+    }
+    return [block];
   }
 }
 

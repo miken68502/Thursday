@@ -48,10 +48,23 @@ class ClearAreaJob extends AreaWorkJob {
     if (!next) return this.stepResult(true, 'DONE', false, { cleared: 0 });
 
     this.currentStepId = 'clear_block';
-    const dug = await digBlockAction(context, next.block);
-    if (!dug.ok) return dug;
-
-    await collectDropsAction(context);
+    const home = context.services.home;
+    if (home?.isProtectedPosition?.(next.block?.position)) {
+      return this.stepResult(false, 'HOME_PROTECTED', false, {
+        block: next.block?.name,
+        position: next.block?.position,
+        radius: home.getProtectionRadius?.() ?? 25
+      });
+    }
+    let cleared = null;
+    if (typeof context.services.world.collectBlock === 'function') {
+      cleared = await context.services.world.collectBlock(next.block, { ignoreNoPath: true });
+    }
+    if (!cleared || !cleared.ok) {
+      const dug = await digBlockAction(context, next.block);
+      if (!dug.ok) return dug;
+      await collectDropsAction(context);
+    }
     this.batchBudget -= 1;
 
     const pressure = context.services.inventory.inventoryPressure();
