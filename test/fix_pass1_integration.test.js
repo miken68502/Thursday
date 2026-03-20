@@ -232,10 +232,10 @@ test('PrepareForJobJob can pull required tool from known chest before crafting',
       home: { getAnchor: () => vec(0, 0, 0), getNearestKnownStation: () => null, getKnownChests: () => [vec(3, 0, 3)] },
       navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
       inventory: {
-        getSummary: () => ({ usedSlots: 2, freeSlots: 34, fullness: 0.1, summary: hasPickaxe ? { stone_pickaxe: 1, bread: 2 } : { bread: 2 } }),
+        getSummary: () => ({ usedSlots: 2, freeSlots: 34, fullness: 0.1, summary: hasPickaxe ? { iron_pickaxe: 1, bread: 2 } : { bread: 2 } }),
         openContainer: async () => ({ ok: true, code: 'SUCCESS', retryable: false, details: { container: { close() {} } } }),
         withdrawItems: async (_container, request) => {
-          if (request.name === 'stone_pickaxe') hasPickaxe = true;
+          if (/_pickaxe$/.test(request.name)) hasPickaxe = true;
           return { ok: true, code: 'SUCCESS', retryable: false, details: request };
         }
       },
@@ -262,11 +262,11 @@ test('PrepareForJobJob uses profile-specific tool candidates', async () => {
       home: { getAnchor: () => vec(0, 0, 0), getNearestKnownStation: () => null, getKnownChests: () => [vec(3, 0, 3)] },
       navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
       inventory: {
-        getSummary: () => ({ usedSlots: 2, freeSlots: 34, fullness: 0.1, summary: hasAxe ? { stone_axe: 1, bread: 2 } : { bread: 2 } }),
+        getSummary: () => ({ usedSlots: 2, freeSlots: 34, fullness: 0.1, summary: hasAxe ? { iron_axe: 1, bread: 2 } : { bread: 2 } }),
         openContainer: async () => ({ ok: true, code: 'SUCCESS', retryable: false, details: { container: { close() {} } } }),
         withdrawItems: async (_container, request) => {
-          if (request.name === 'stone_axe') hasAxe = true;
-          return { ok: request.name === 'stone_axe', code: request.name === 'stone_axe' ? 'SUCCESS' : 'FAILED', retryable: false, details: request };
+          if (/_axe$/.test(request.name)) hasAxe = true;
+          return { ok: /_axe$/.test(request.name), code: /_axe$/.test(request.name) ? 'SUCCESS' : 'FAILED', retryable: false, details: request };
         }
       },
       crafting: { craft: async () => ({ ok: false, code: 'MISSING_MATERIALS', retryable: false }) }
