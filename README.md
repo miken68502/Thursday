@@ -1,25 +1,81 @@
-# MinecraftBot V6 — Survival Core Rewrite
+# MinecraftBot V6 — Survival Core
 
-Modular Mineflayer survival framework with explicit state, interrupt-driven jobs, and layered recovery.
+Modular Mineflayer survival bot with:
+- scheduler + interrupt-driven jobs,
+- layered recovery and failure memory,
+- owner command intake and planning,
+- API-first block collection via Mineflayer + plugins.
 
-## Current status
+---
 
-Implemented architecture and phase progression:
-- **Milestone 1–6**: kernel/scheduler/blackboard/recovery/utility core, survival and inventory policies, command intake, and deterministic tests
-- **Milestone 7 (Base intelligence)**: base storage registry, chest category mapping, and prepare/restock job flow before work
-- **Milestone 8 (Advanced recovery)**: failure memory, oscillation detection, path failure tracking, and recovery throttling
-- **Milestone 9 (Task planning)**: planner service for prerequisite chains (example: iron pickaxe plan)
-- **Milestone 10 (Area work scaffold)**: `AreaWorkJob` base + `ClearAreaJob` with area scan queue
-- **Milestone 11 (Sustainability)**: crop harvest/plant jobs, wood replant scaffolding, and furnace fuel prioritization
-- **Milestone 12 (Diagnostics)**: diagnostics status reporting integrated into owner command layer
-- **Next-stage Step 3 complete**: area queue optimization with batched anchor movement and nearest-item dequeue for clear-area work
+## Current features
 
-## Next-stage roadmap
-1. Sustainability loops with base-stock target thresholds and automated recurring plans.
+### Core runtime
+- Kernel/scheduler/blackboard/state machine architecture.
+- Recovery engine with path/target failure tracking and escalation.
+- Auto-reboot handling on disconnect/kick (configurable).
+- Idle wander scheduling when no work is queued.
 
-## Owner command intake (task scheduling)
+### Mineflayer API integration
+- Uses `mineflayer`, `mineflayer-pathfinder`, and `mineflayer-collectblock`.
+- Plugin-first block collection with fallback dig paths.
+- Pathfinder-assisted harvest tool selection (`bestHarvestTool`) with fallback heuristics.
+- Dig guardrails via `canDigBlock` and dig-time telemetry.
 
-Owner-only chat commands are mapped to jobs using `!bot`:
+### Jobs and behaviors
+- Mining and wood gathering (including vein-aware collection support).
+- Gather wood supports sapling replant attempts after successful harvest.
+- Area clearing with batch-anchor optimization and nearest-work dequeue.
+- Crop harvest/plant flows.
+- Follow/guard/home/deposit/craft/smelt/sleep/prepare and sequence jobs.
+
+### Safety/protection
+- Home/base protection radius support (`MC_HOME_PROTECTION_RADIUS`).
+- Protection-aware checks in clear-area and crop harvest flows.
+- Owner-only command intake.
+
+### Diagnostics/planning
+- Planner service for command-driven prerequisite chains.
+- Diagnostics/status reporting exposed via chat commands.
+
+---
+
+## Setup and startup
+
+### 1) Install dependencies
+```bash
+npm install
+```
+
+### 2) Create a root `.env`
+Create `.env` in the project root (same level as `package.json`), for example:
+
+```env
+MC_HOST=localhost
+MC_PORT=25565
+MC_USERNAME=SurvivalWorkerV6
+MC_OWNER=YourMinecraftName
+LOG_LEVEL=info
+
+# Optional runtime controls
+MC_AUTO_REBOOT=true
+MC_REBOOT_DELAY_MS=4000
+MC_IDLE_WANDER_DELAY_MS=45000
+MC_IDLE_WANDER_COOLDOWN_MS=30000
+MC_HOME_PROTECTION_RADIUS=25
+```
+
+### 3) Start the bot
+```bash
+npm start
+```
+
+---
+
+## Commands
+
+Owner-only in-game chat commands are prefixed with `!bot`:
+
 - `!bot mine <resource> <amount>`
 - `!bot gather wood <amount>`
 - `!bot follow`
@@ -48,28 +104,30 @@ Aliases:
 - `!bot rtb` (home)
 - `!bot protect` / `!bot defend` (guard)
 
-## Run
+---
 
-Create your environment file in the **project root** (same level as `package.json`), not inside `src/`:
+## Maintenance workflow
 
+### Validate syntax
 ```bash
-cp .env.example .env
+npm run check
 ```
 
-Then edit `.env` values and start the bot:
-
-```bash
-npm install
-npm start
-```
-
-## Test
-
+### Run tests
 ```bash
 npm test
 ```
 
-Environment variables (loaded from root `.env`):
-- `MC_HOST` / `MC_PORT` / `MC_USERNAME`
-- `MC_OWNER`
-- `LOG_LEVEL`
+### Typical update loop
+1. Pull latest changes.
+2. Run `npm install` if dependencies changed.
+3. Run `npm run check`.
+4. Run `npm test`.
+5. Restart with `npm start`.
+
+---
+
+## Notes
+- Environment variables are loaded from root `.env` at startup.
+- If owner commands do not respond, verify `MC_OWNER` matches exact in-game username.
+- If block collection seems degraded, confirm plugin load and pathfinder availability in logs.

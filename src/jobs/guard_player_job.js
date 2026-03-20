@@ -29,7 +29,7 @@ class GuardPlayerJob extends BaseJob {
       const playerPos = owner && context.bot?.players?.[owner]?.entity?.position
         ? context.bot.players[owner].entity.position
         : context.bot?.entity?.position;
-      return combat.getThreatNearPosition(playerPos, radius, context.data?.hostileCatalog || []);
+      return combat.getThreatNearPosition(context.data?.hostileCatalog || [], playerPos, radius);
     }
 
     return null;
