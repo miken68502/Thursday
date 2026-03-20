@@ -198,6 +198,26 @@ class InventoryService {
   }
 
   async equipBestTool(block) {
+    if (this.bot.pathfinder?.bestHarvestTool) {
+      try {
+        const bestTool = this.bot.pathfinder.bestHarvestTool(block);
+        if (!bestTool) {
+          const toolClass = this.inferToolClass(block);
+          if (toolClass === 'none') return result(true, 'SUCCESS', false, { tool: null, toolClass: 'none', source: 'pathfinder', block: block?.name });
+          return result(false, 'MISSING_TOOL', true, { toolClass, block: block?.name, source: 'pathfinder' });
+        }
+        await this.bot.equip(bestTool, 'hand');
+        const toolClass = bestTool.name.includes('_axe') ? 'axe'
+          : bestTool.name.includes('_pickaxe') ? 'pickaxe'
+            : bestTool.name.includes('_shovel') ? 'shovel'
+              : bestTool.name.includes('_sword') ? 'sword'
+                : 'tool';
+        return result(true, 'SUCCESS', false, { tool: bestTool.name, toolClass, source: 'pathfinder' });
+      } catch (error) {
+        this.logger.debug('Pathfinder bestHarvestTool failed', { block: block?.name, error: error.message });
+      }
+    }
+
     const choice = this.resolveHarvestTool(block);
     if (choice.toolClass === 'none') return result(true, 'SUCCESS', false, { tool: null, toolClass: 'none', source: choice.source, block: block?.name });
     if (!choice.item) return result(false, 'MISSING_TOOL', true, { toolClass: choice.toolClass, block: block?.name, source: choice.source });

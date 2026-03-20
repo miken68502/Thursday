@@ -111,6 +111,37 @@ test('guard job persists and resumes guard mode after threat handling', async ()
   assert.equal(guarding.details.reason, 'area_safe');
 });
 
+test('guard job passes hostile catalog to getThreatNearPosition in expected argument order', async () => {
+  const job = new GuardPlayerJob({ scanIntervalMs: 0, guardRadius: 6 });
+  const blackboard = new Blackboard();
+  blackboard.patch('designatedPlayer', 'Owner');
+  let callArgs = null;
+  const context = {
+    blackboard,
+    data: { hostileCatalog: ['zombie', 'skeleton'] },
+    bot: {
+      health: 20,
+      attack: () => {},
+      entity: { position: vec(0, 0, 0) },
+      players: { Owner: { entity: { position: vec(0, 0, 0) } } }
+    },
+    services: {
+      inventory: { equipBestWeapon: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
+      navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
+      combat: {
+        getThreatNearPosition: (...args) => {
+          callArgs = args;
+          return null;
+        }
+      }
+    }
+  };
+
+  const out = await job.step(context, { cancelled: false });
+  assert.equal(out.ok, true);
+  assert.deepEqual(callArgs[0], ['zombie', 'skeleton']);
+});
+
 test('watchdog does not cancel healthy persistent jobs with heartbeat', async () => {
   const blackboard = new Blackboard();
   const scheduler = {
