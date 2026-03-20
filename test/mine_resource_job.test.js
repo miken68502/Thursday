@@ -105,6 +105,92 @@ test('mine job uses wider approach range for tall wood targets', () => {
   assert.equal(job.getApproachRange(context, { position: { x: 0, y: 64, z: 0 } }), 1);
 });
 
+test('mine job prefers collectblock plugin path when available', async () => {
+  const job = new MineResourceJob({ resource: 'coal', amount: 1 });
+  let collectBlockCalls = 0;
+  let digs = 0;
+  const context = {
+    bot: {
+      dig: async () => { digs += 1; },
+      blockAt: () => ({ name: 'coal_ore', position: { x: 2, y: 12, z: 2 } }),
+      entity: {
+        position: {
+          x: 0, y: 0, z: 0,
+          distanceTo(pos) {
+            const dx = this.x - pos.x;
+            const dy = this.y - pos.y;
+            const dz = this.z - pos.z;
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+          }
+        }
+      }
+    },
+    blackboard: new Blackboard(),
+    data: { resourceCatalog: { coal: ['coal_ore'] } },
+    services: {
+      world: {
+        findBlocksByNames: () => [{ x: 2, y: 12, z: 2 }],
+        collectBlock: async () => {
+          collectBlockCalls += 1;
+          return { ok: true, code: 'SUCCESS', retryable: false };
+        }
+      },
+      navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
+      inventory: { equipBestTool: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) }
+    },
+    recovery: { recover: async () => ({ ok: false, code: 'FAILED', retryable: false, details: {} }) },
+    logger: { child() { return this; }, info() {}, warn() {}, debug() {} }
+  };
+
+  const result = await job.step(context, { cancelled: false });
+  assert.equal(result.ok, true);
+  assert.equal(collectBlockCalls, 1);
+  assert.equal(digs, 0);
+});
+
+test('mine job can use collectblock vein batches for wood progress', async () => {
+  const job = new MineResourceJob({ resource: 'wood', amount: 4 });
+  const context = {
+    bot: {
+      blockAt: () => ({ name: 'oak_log', position: { x: 2, y: 65, z: 2 } }),
+      entity: {
+        position: {
+          x: 0, y: 64, z: 0,
+          distanceTo(pos) {
+            const dx = this.x - pos.x;
+            const dy = this.y - pos.y;
+            const dz = this.z - pos.z;
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+          }
+        }
+      }
+    },
+    blackboard: new Blackboard(),
+    data: { resourceCatalog: { wood: ['oak_log'] } },
+    services: {
+      world: {
+        findBlocksByNames: () => [{ x: 2, y: 65, z: 2 }],
+        findFromVein: () => [
+          { name: 'oak_log', position: { x: 2, y: 65, z: 2 } },
+          { name: 'oak_log', position: { x: 2, y: 66, z: 2 } },
+          { name: 'oak_log', position: { x: 2, y: 67, z: 2 } }
+        ],
+        collectBlockBatch: async () => ({ ok: true, code: 'SUCCESS', retryable: false, details: { collected: 3 } }),
+        collectBlock: async () => ({ ok: true, code: 'SUCCESS', retryable: false, details: { collected: 1 } })
+      },
+      home: { isProtectedPosition: () => false },
+      navigation: { moveToPosition: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) },
+      inventory: { equipBestTool: async () => ({ ok: true, code: 'SUCCESS', retryable: false }) }
+    },
+    recovery: { recover: async () => ({ ok: false, code: 'FAILED', retryable: false, details: {} }) },
+    logger: { child() { return this; }, info() {}, warn() {}, debug() {} }
+  };
+
+  const result = await job.step(context, { cancelled: false });
+  assert.equal(result.ok, true);
+  assert.equal(result.details.progress, 3);
+});
+
 
 test('mine job search movement is progress not a retryable failure', async () => {
   const job = new MineResourceJob({ resource: 'sand', amount: 8 });

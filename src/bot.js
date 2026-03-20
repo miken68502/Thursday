@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const mineflayer = require('mineflayer');
 const { pathfinder } = require('mineflayer-pathfinder');
+const collectBlock = require('mineflayer-collectblock').plugin;
 
 const { Logger } = require('./core/logger');
 const { Blackboard } = require('./core/blackboard');
@@ -52,6 +53,7 @@ const { JobSequenceJob } = require('./jobs/job_sequence_job');
 const { ComeHereJob } = require('./jobs/come_here_job');
 const { IdleWanderJob } = require('./jobs/idle_wander_job');
 const { UnequipArmorJob } = require('./jobs/unequip_armor_job');
+const { DigDownJob } = require('./jobs/dig_down_job');
 
 function loadEnvironmentFromRootEnv() {
   const envPath = path.resolve(__dirname, '..', '.env');
@@ -87,6 +89,7 @@ function createBot(options = {}) {
   });
 
   bot.loadPlugin(pathfinder);
+  bot.loadPlugin(collectBlock);
 
   const logger = new Logger('MinecraftBotV6', process.env.LOG_LEVEL || 'info');
   const blackboard = new Blackboard();
@@ -130,7 +133,8 @@ function createBot(options = {}) {
     JobSequenceJob,
     ComeHereJob,
     IdleWanderJob,
-    UnequipArmorJob
+    UnequipArmorJob,
+    DigDownJob
   };
 
   const planner = new PlannerService({ jobs, priorities, logger });

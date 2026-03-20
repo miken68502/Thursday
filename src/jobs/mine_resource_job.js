@@ -258,22 +258,47 @@ class MineResourceJob extends BaseJob {
     }
     if (!moved.ok) return this.attemptRecovery(context, { code: moved.code, targetId: `${pos.x}:${pos.y}:${pos.z}`, position: pos, details: moved.details, jobType: this.type });
 
-    this.currentStepId = 'equip_tool';
-    const equipped = await equipBestToolAction(context, block);
-    logger?.info('Mining equip result', { resource, block: block?.name, equipped });
-    if (!equipped.ok && equipped.code === 'MISSING_TOOL') return this.recoverMissingTool(context, token, block);
-    if (!equipped.ok) return equipped;
+    let minedWithPlugin = false;
+    let minedCount = 1;
+    if (typeof context.services.world.collectBlock === 'function') {
+      this.currentStepId = 'collectblock';
+      const remaining = Math.max(1, amount - this.progress);
+      let collected = null;
+      if (resource === 'wood' && typeof context.services.world.findFromVein === 'function') {
+        const cluster = context.services.world.findFromVein(block, Math.min(remaining, 8))
+          .filter((candidate) => !context.services.home?.isProtectedPosition?.(candidate?.position));
+        if (cluster.length > 1 && typeof context.services.world.collectBlockBatch === 'function') {
+          collected = await context.services.world.collectBlockBatch(cluster, { ignoreNoPath: true });
+        }
+      }
+      if (!collected) collected = await context.services.world.collectBlock(block, { ignoreNoPath: true });
+      if (collected.ok) {
+        minedWithPlugin = true;
+        minedCount = Math.max(1, Number(collected?.details?.collected || 1));
+        logger?.info('Mining collectblock result', { resource, block: block?.name, pos, collected });
+      } else {
+        logger?.debug?.('Mining collectblock fallback', { resource, block: block?.name, pos, collected });
+      }
+    }
 
-    this.currentStepId = 'dig';
-    const dug = await digBlockAction(context, block, { ignoreHomeProtection: true });
-    logger?.info('Mining dig result', { resource, block: block?.name, pos, dug });
-    if (!dug.ok && dug.code === 'MISSING_TOOL') return this.recoverMissingTool(context, token, block);
-    if (!dug.ok) return this.attemptRecovery(context, { code: dug.code, targetId: `${pos.x}:${pos.y}:${pos.z}`, position: pos, details: dug.details, jobType: this.type });
+    if (!minedWithPlugin) {
+      this.currentStepId = 'equip_tool';
+      const equipped = await equipBestToolAction(context, block);
+      logger?.info('Mining equip result', { resource, block: block?.name, equipped });
+      if (!equipped.ok && equipped.code === 'MISSING_TOOL') return this.recoverMissingTool(context, token, block);
+      if (!equipped.ok) return equipped;
 
-    this.currentStepId = 'collect';
-    await collectDropsAction(context, (drop) => family.includes(drop?.name));
+      this.currentStepId = 'dig';
+      const dug = await digBlockAction(context, block, { ignoreHomeProtection: true });
+      logger?.info('Mining dig result', { resource, block: block?.name, pos, dug });
+      if (!dug.ok && dug.code === 'MISSING_TOOL') return this.recoverMissingTool(context, token, block);
+      if (!dug.ok) return this.attemptRecovery(context, { code: dug.code, targetId: `${pos.x}:${pos.y}:${pos.z}`, position: pos, details: dug.details, jobType: this.type });
 
-    this.progress += 1;
+      this.currentStepId = 'collect';
+      await collectDropsAction(context, (drop) => family.includes(drop?.name));
+    }
+
+    this.progress += minedWithPlugin ? Math.min(minedCount, amount - this.progress) : 1;
     this.recoveryLevel = 0;
     logger?.info('Mining progress updated', { resource, progress: this.progress, amount, target: `${pos.x}:${pos.y}:${pos.z}` });
     context.blackboard.recordProgress({ jobType: this.type, stepId: 'mined_block', progress: this.progress, amount, resource, target: `${pos.x}:${pos.y}:${pos.z}` });
