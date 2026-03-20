@@ -77,6 +77,7 @@ npm start
 Owner-only in-game chat commands are prefixed with `!bot`:
 
 - `!bot mine <resource> <amount>`
+- `!bot dig down <targetY> <north|south|east|west>`
 - `!bot gather wood <amount>`
 - `!bot follow`
 - `!bot guard`

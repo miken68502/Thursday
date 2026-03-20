@@ -41,7 +41,15 @@ class TaskIntakeService {
     if (!text.startsWith('!bot ')) return null;
 
     const args = text.slice(5).trim().split(/\s+/);
-    let command = this.normalizeCommand((args.shift() || '').toLowerCase());
+    const rawCommand = (args.shift() || '').toLowerCase();
+    if (rawCommand === 'dig' && (args[0] || '').toLowerCase() === 'down') {
+      const targetY = Number(args[1] ?? -64);
+      const direction = String(args[2] || 'north').toLowerCase();
+      if (!Number.isFinite(targetY) || !['north', 'south', 'east', 'west'].includes(direction)) return null;
+      return { type: 'dig_down', targetY, direction };
+    }
+
+    let command = this.normalizeCommand(rawCommand);
     if (command === 'comehere' || (command === 'come' && (args[0] || '').toLowerCase() === 'here')) return { type: 'comehere' };
     if (command === 'come' && (args[0] || '').toLowerCase() === 'here') command = 'comehere';
     if (command === 'comehere') return { type: 'comehere' };
@@ -198,6 +206,17 @@ class TaskIntakeService {
     if (parsed.type === 'smelt') return { job: new this.jobs.SmeltItemsJob({ item: parsed.item, amount: parsed.amount }), options: { priority: this.priorities.playerCritical } };
     if (parsed.type === 'template') return this.buildTemplateChain(parsed);
     if (parsed.type === 'cleararea') return { job: new this.jobs.ClearAreaJob({ radius: parsed.radius }), options: { priority: this.priorities.activeWork } };
+    if (parsed.type === 'dig_down') {
+      return {
+        job: new this.jobs.JobSequenceJob({
+          jobs: [
+            new this.jobs.PrepareForJobJob({ profile: 'mine' }),
+            new this.jobs.DigDownJob({ targetY: parsed.targetY, direction: parsed.direction })
+          ]
+        }),
+        options: { priority: this.priorities.playerCritical }
+      };
+    }
     if (parsed.type === 'prepare') return { job: new this.jobs.PrepareForJobJob({ profile: parsed.profile }), options: { priority: this.priorities.playerCritical } };
     if (parsed.type === 'harvest') return { job: new this.jobs.HarvestCropsJob(), options: { priority: this.priorities.activeWork } };
     if (parsed.type === 'plant') return { job: new this.jobs.PlantCropsJob(), options: { priority: this.priorities.activeWork } };
@@ -217,7 +236,7 @@ class TaskIntakeService {
   }
 
   helpText() {
-    return 'Commands: mine/gather wood/follow/come here/guard/home/deposit/unequip/craft/smelt/sleep/sethome/stop/status/template iron_loop/plan craft iron_pickaxe/cleararea/harvest/plant/resume/sustain [on|off|status|once]/help';
+    return 'Commands: mine/gather wood/dig down <targetY> <north|south|east|west>/follow/come here/guard/home/deposit/unequip/craft/smelt/sleep/sethome/stop/status/template iron_loop/plan craft iron_pickaxe/cleararea/harvest/plant/resume/sustain [on|off|status|once]/help';
   }
 
   handleChat(username, message) {

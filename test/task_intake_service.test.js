@@ -56,6 +56,7 @@ function makeService(overrides = {}) {
     ClearAreaJob: class { constructor(params) { this.type = 'ClearAreaJob'; this.params = params; } },
     HarvestCropsJob: class { constructor(params) { this.type = 'HarvestCropsJob'; this.params = params; } },
     PlantCropsJob: class { constructor(params) { this.type = 'PlantCropsJob'; this.params = params; } },
+    DigDownJob: class { constructor(params) { this.type = 'DigDownJob'; this.params = params; } },
     JobSequenceJob: class { constructor(params) { this.type = 'JobSequenceJob'; this.params = params; } }
   };
 
@@ -116,6 +117,18 @@ test('supports aliases and help command', () => {
   assert.equal(help, true);
   assert.equal(enqueued[0].job.type, 'JobSequenceJob');
   assert.equal(bot.chatMessages.some((m) => m.includes('Commands:')), true);
+});
+
+test('parses dig down command and schedules prep + dig-down chain', () => {
+  const { service, enqueued } = makeService();
+  const accepted = service.handleChat('Owner', '!bot dig down -64 north');
+  assert.equal(accepted, true);
+  assert.equal(enqueued.length, 1);
+  assert.equal(enqueued[0].job.type, 'JobSequenceJob');
+  assert.equal(enqueued[0].job.params.jobs[0].type, 'PrepareForJobJob');
+  assert.equal(enqueued[0].job.params.jobs[1].type, 'DigDownJob');
+  assert.equal(enqueued[0].job.params.jobs[1].params.targetY, -64);
+  assert.equal(enqueued[0].job.params.jobs[1].params.direction, 'north');
 });
 
 test('schedules iron_loop template with fallback chain', () => {
