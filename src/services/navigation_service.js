@@ -1,4 +1,5 @@
 const { goals: { GoalNear }, Movements } = require('mineflayer-pathfinder');
+const { Vec3 } = require('vec3');
 
 function actionResult(ok, code, retryable, details = {}, nextHint = '') {
   return { ok, code, retryable, details, nextHint };
@@ -48,13 +49,25 @@ class NavigationService {
     return movements;
   }
 
+  normalizePosition(position) {
+    if (!position) return null;
+    if (typeof position.floored === 'function') return position;
+    const x = Number(position.x);
+    const y = Number(position.y);
+    const z = Number(position.z);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+    return new Vec3(x, y, z);
+  }
+
   async moveToPosition(position, options = {}) {
     try {
+      const target = this.normalizePosition(position);
+      if (!target) return actionResult(false, 'NO_TARGET', false, { reason: 'invalid_position' });
       const profile = options.profile || this.activeProfile;
       const range = options.range ?? this.movementProfiles[profile]?.goalRange ?? 1;
-      const movements = this.buildMovements(profile, position);
+      const movements = this.buildMovements(profile, target);
       if (movements) this.bot.pathfinder.setMovements(movements);
-      await this.bot.pathfinder.goto(new GoalNear(position.x, position.y, position.z, range));
+      await this.bot.pathfinder.goto(new GoalNear(target.x, target.y, target.z, range));
       return actionResult(true, 'SUCCESS', false, {
         profile,
         range,
