@@ -86,9 +86,7 @@ class DigDownJob extends BaseJob {
     }
 
     this.currentStepId = 'move_down';
-    const nextPos = typeof botPos.offset === 'function'
-      ? botPos.offset(vectors.forward.x, -1, vectors.forward.z)
-      : { x: current.x + vectors.forward.x, y: current.y - 1, z: current.z + vectors.forward.z };
+    const nextPos = { x: current.x + vectors.forward.x, y: current.y - 1, z: current.z + vectors.forward.z };
     const moved = await context.services.navigation.moveToPosition(nextPos, { range: 1, profile: 'mine' });
     if (!moved.ok) return moved;
 
