@@ -1,0 +1,17 @@
+{
+  "name": "minecraftbot-v6-survival-core",
+  "version": "0.1.0",
+  "description": "Modular Mineflayer survival bot framework focused on reliability and recovery",
+  "main": "src/bot.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/bot.js",
+    "check": "node --check src/bot.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "mineflayer": "^4.20.1",
+    "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-collectblock": "^1.6.0"
+  }
+}

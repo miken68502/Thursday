@@ -1,0 +1,146 @@
+const { BaseJob } = require('./base_job');
+const { eatFoodAction } = require('../actions/eat_food');
+const { equipArmorAction } = require('../actions/equip_armor');
+const { ReturnHomeJob } = require('./return_home_job');
+const { moveToPosAction } = require('../actions/move_to_pos');
+const { openContainerAction } = require('../actions/open_container');
+const { EDIBLE_FOOD_NAMES } = require('../config/food_catalog');
+
+class SurvivalPulseJob extends BaseJob {
+  constructor(params = {}) {
+    super('SurvivalPulseJob', params);
+  }
+
+  chestKey(position) {
+    if (!position) return null;
+    return `${position.x}:${position.y}:${position.z}`;
+  }
+
+  clearNoFoodState(context) {
+    context.blackboard.patch('survival.lastMissingFoodAt', 0);
+    context.blackboard.patch('survival.lastMissingFoodChestKey', null);
+    context.blackboard.patch('survival.homeFoodUnavailable', false);
+  }
+
+  maybeNotifyNoFood(context) {
+    const now = Date.now();
+    const noticeCooldownMs = 5 * 60 * 1000;
+    const lastNoticeAt = context.blackboard.get('survival.lastNoFoodNoticeAt', 0) || 0;
+    if (now - lastNoticeAt < noticeCooldownMs) return;
+    context.blackboard.patch('survival.lastNoFoodNoticeAt', now);
+    if (typeof context.bot.chat === 'function') {
+      context.bot.chat('No food found in known home chests. I'll stop reminding you for 5 minutes.');
+    }
+  }
+
+  async tryWithdrawFoodFromKnownChests(context) {
+    const searchRadius = context.services.home.getProtectionRadius?.() ?? 25;
+    context.services.home.scanStationsNear?.(context.bot, searchRadius);
+
+    const checkedChestKeys = new Set();
+    const knownChests = context.services.home.getKnownChests?.(context.bot.entity.position, { preferredCategory: 'food' }) || [];
+    if (!knownChests.length) {
+      context.blackboard.patch('survival.lastMissingFoodAt', Date.now());
+      context.blackboard.patch('survival.lastMissingFoodChestKey', null);
+      context.blackboard.patch('survival.homeFoodUnavailable', true);
+      this.maybeNotifyNoFood(context);
+      return this.stepResult(false, 'MISSING_FOOD', false, { reason: 'known_chest_missing' });
+    }
+
+    for (const chestPos of knownChests) {
+      const key = this.chestKey(chestPos);
+      if (!key || checkedChestKeys.has(key)) continue;
+      checkedChestKeys.add(key);
+
+      const moved = await moveToPosAction(context, chestPos, { range: 2, profile: 'follow_safe' });
+      if (!moved.ok) continue;
+
+      const block = context.bot.blockAt(chestPos);
+      if (!block || !/(chest|barrel)/.test(block.name || '')) continue;
+
+      const opened = await openContainerAction(context, block, { sort: false });
+      if (!opened.ok) continue;
+
+      const container = opened.details.container;
+      try {
+        for (const name of EDIBLE_FOOD_NAMES) {
+          const pulled = await context.services.inventory.withdrawItems(container, { name, amount: 8 });
+          if (pulled.ok && context.services.inventory.hasEdibleFood()) {
+            this.clearNoFoodState(context);
+            return this.stepResult(true, 'SUCCESS', false, {
+              food: name,
+              amount: pulled.details?.amount ?? 8,
+              chest: chestPos,
+              checked: checkedChestKeys.size
+            });
+          }
+        }
+      } finally {
+        if (container?.close) container.close();
+      }
+
+      context.blackboard.patch('survival.lastMissingFoodChestKey', key);
+    }
+
+    context.blackboard.patch('survival.lastMissingFoodAt', Date.now());
+    context.blackboard.patch('survival.homeFoodUnavailable', true);
+    this.maybeNotifyNoFood(context);
+    return this.stepResult(false, 'MISSING_FOOD', false, {
+      reason: 'no_food_in_known_chests',
+      checked: checkedChestKeys.size
+    });
+  }
+
+  async step(context, token) {
+    if (token.cancelled) return this.stepResult(false, 'INTERRUPTED', false, { reason: token.reason });
+
+    this.currentStepId = 'equip_armor';
+    await equipArmorAction(context);
+
+    const hunger = context.bot.food ?? 20;
+    if (hunger >= 14) {
+      return this.stepResult(true, 'DONE', false, { health: context.bot.health, food: context.bot.food });
+    }
+
+    if (context.services.inventory.hasEdibleFood()) {
+      this.currentStepId = 'eat_inventory_food';
+      const ate = await eatFoodAction(context);
+      if (!ate.ok) return ate;
+      this.clearNoFoodState(context);
+      return this.stepResult(true, 'DONE', false, {
+        health: context.bot.health,
+        food: context.bot.food,
+        recovered: 'inventory_food'
+      });
+    }
+
+    this.currentStepId = 'return_home_for_food';
+    const returned = await new ReturnHomeJob({ reason: 'survival_hunger' }).step(context, token);
+    if (!returned.ok) return returned;
+
+    this.currentStepId = 'withdraw_food';
+    const withdrew = await this.tryWithdrawFoodFromKnownChests(context);
+    if (!withdrew.ok) return withdrew;
+
+    if (!context.services.inventory.hasEdibleFood()) {
+      context.blackboard.patch('survival.lastMissingFoodAt', Date.now());
+      context.blackboard.patch('survival.homeFoodUnavailable', true);
+      this.maybeNotifyNoFood(context);
+      return this.stepResult(false, 'MISSING_FOOD', false, { reason: 'food_not_in_inventory_after_withdraw' });
+    }
+
+    this.clearNoFoodState(context);
+
+    this.currentStepId = 'eat_after_withdraw';
+    const ate = await eatFoodAction(context);
+    if (!ate.ok) return ate;
+
+    return this.stepResult(true, 'DONE', false, {
+      health: context.bot.health,
+      food: context.bot.food,
+      recovered: 'chest_food_recovery'
+    });
+  }
+}
+
+module.exports = { SurvivalPulseJob };
